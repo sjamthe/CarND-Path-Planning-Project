@@ -503,8 +503,8 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
                 if(closet_car_ahead[car_lane-1] > closet_car_ahead[car_lane] ) {
                     cout << " room ahead, ";
                     double car_makeup = (speed_car_behind[car_lane-1]-final_speed)*100;
-                    if(car_makeup < 50)
-                        car_makeup = 50;
+                    if(car_makeup < 100)
+                        car_makeup = 100;
                     if(closet_car_behind[car_lane - 1] > car_makeup) {
                         cout << " change lane to left " << closet_car_behind[car_lane - 1] << " > " << car_makeup << endl;
                         car_lane = car_lane - 1;
@@ -525,8 +525,8 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
                 if(closet_car_ahead[car_lane+1] > closet_car_ahead[car_lane]) {
                     cout << " room ahead, ";
                     double car_makeup = (speed_car_behind[car_lane + 1]-final_speed)*100;
-                    if(car_makeup < 50)
-                        car_makeup = 50;
+                    if(car_makeup < 100)
+                        car_makeup = 100;
                     if(closet_car_behind[car_lane + 1] > car_makeup) {
                         cout << " change lane to right " << closet_car_behind[car_lane - 1] << ", " << car_makeup << endl;
                         car_lane = car_lane + 1;
@@ -577,7 +577,7 @@ double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, dou
     }
   }
   //don't change speed too much to avoid max out accelerations
-  double max_speed_change = 0.15;
+  double max_speed_change = 0.10;
     
   if(final_speed - car_speed > max_speed_change)
       final_speed = car_speed + max_speed_change;
