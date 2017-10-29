@@ -443,7 +443,6 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
     } else if(car_d > 8 && car_d <= 12) {
         car_lane = 2;
     }
-    //car_d = car_lane*4 + 2; //we do this in the end
     
     //stores location of car that is closest (but in front) to car_s in each lane.
     vector <double> closet_car_ahead = {7000, 7000, 7000};
@@ -503,8 +502,8 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
                 //see if front gap in that lane is greater that current lane
                 if(closet_car_ahead[car_lane-1] > closet_car_ahead[car_lane] ) {
                     cout << " room ahead, ";
-                    double car_makeup = (speed_car_behind[car_lane-1]-final_speed)*100 + 50;
-                    if(car_makeup < 0)
+                    double car_makeup = (speed_car_behind[car_lane-1]-final_speed)*100;
+                    if(car_makeup < 50)
                         car_makeup = 50;
                     if(closet_car_behind[car_lane - 1] > car_makeup) {
                         cout << " change lane to left " << closet_car_behind[car_lane - 1] << " > " << car_makeup << endl;
@@ -525,8 +524,8 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
                 //see if front gap in that lane is greater that current lane
                 if(closet_car_ahead[car_lane+1] > closet_car_ahead[car_lane]) {
                     cout << " room ahead, ";
-                    double car_makeup = (speed_car_behind[car_lane + 1]-final_speed)*100 + 50;
-                    if(car_makeup < 0)
+                    double car_makeup = (speed_car_behind[car_lane + 1]-final_speed)*100;
+                    if(car_makeup < 50)
                         car_makeup = 50;
                     if(closet_car_behind[car_lane + 1] > car_makeup) {
                         cout << " change lane to right " << closet_car_behind[car_lane - 1] << ", " << car_makeup << endl;
