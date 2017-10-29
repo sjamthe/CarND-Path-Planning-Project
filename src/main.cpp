@@ -248,7 +248,11 @@ vector<vector<double>>  sortXY(vector <double> x_vals, vector < double> y_vals) 
     return {x, y};
 }
 
-vector<vector<double>> firstoldXY(double car_s, double car_d, double ref_yaw, double car_speed, double max_speed,
+// projectPath: gets new lane change (car_d is needed) and new speed as input along with car coordinates and previous values.
+// After taking some previous values for smooth transition it predict new path.
+// We first deternime the cars next path in Frenet. We increase car_s by velocity*0.02 and also adjust car_d slightly over 100 points
+// The frenet coordinates are conveted to global coordinates and returned.
+vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, double car_speed, double max_speed,
              vector<double> previous_path_x, vector<double> previous_path_y, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y)
 {
     vector<double> xy;
@@ -702,27 +706,14 @@ int main() {
                 }
             }
             
-            vector<vector<double>> results = firstoldXY(car_s, car_d, ref_yaw, car_speed, max_speed, previous_path_x,
+            vector<vector<double>> results = projectPath(car_s, car_d, ref_yaw, car_speed, max_speed, previous_path_x,
                                                         previous_path_y, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-            vector<vector<double>> results2;
+
+            results = smoothCoordinates(results[0], results[1], car_x, car_y, ref_yaw, max_speed,
+                                                        car_s, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            msgJson["next_x"] = results[0];
+            msgJson["next_y"] = results[1];
             
-            if(car_s > 2650 && car_s < 4070) {
-  
-                //results2 = smoothLocalCoordinates(results[0], results[1], car_x, car_y, ref_yaw, max_speed);
-                //flip y & x
-                results2 = smoothCoordinates(results[1], results[0], car_x, car_y, ref_yaw, max_speed,
-                                             car_s, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-                msgJson["next_x"] = results2[1];
-                msgJson["next_y"] = results2[0];
-            } else {
-
-                //results2 = smoothLocalCoordinates(results[0], results[1], car_x, car_y, ref_yaw, max_speed);
-
-                results2 = smoothCoordinates(results[0], results[1], car_x, car_y, ref_yaw, max_speed,
-                                                                car_s, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-                msgJson["next_x"] = results2[0];
-                msgJson["next_y"] = results2[1];
-            }
             //for (int i=0; i<results2[0].size(); i++) {
             //    cout << car_s << ", " << results2[0][i] << ", " << results2[1][i] << endl;
             //}
