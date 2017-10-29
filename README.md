@@ -1,6 +1,45 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
-   
+
+### Approach
+#### Summary of the solution 
+function max_speed_inlane finds out how fast a car can go in the current lane (using sensor fusion data)
+function change_lane decides if lane change is necessary, possible and returns new lane.
+function projectPath uses the above two values and car state to determine next path for the car (using Frenet)
+function smoothCoordinates uses spline to smooth the path projected above. (There is a bug in the function that I am fixing, when the car is going vertical and about to turn left (in reverse direction) spline fails as it expects sorted x values).
+
+#### Function max_speed_inlane - How fast the car can go in current lane.
+1. Use sensor fusion data to look at all the cars that are ahead in our lane.
+2. For every car that is ahead of us we want to make sure we have 10 seconds gap between us and them. Based on this we determine what is the minimum speed we can take. We don't just look at car in front of us as that car may be speeding and about to hit the car in its path that has stopped!.
+3. Also make our speed is not greater than the car ahead of us.
+4. Adjust this speed such that each speed increment (in .02 seconds) is not very high to avoid abrupt acceleration. This limit is set as a constant max_speed_change.
+Based the above we determine the speed of the car.
+
+#### Function change_lane
+This function is called for every loop is car is moving at more than 10 m/s (we don't want to change lane when car is moving slowly'). 
+We use sensor fusion data to find out car ahead and behind our position in each lane and their speed.
+If the our car is not moving at max speed and sees a car ahead of it that is 20 seconds away (based on current speed) we use the below logic to decide how to change lane.
+1. We prefer overtaking from left, do we have a lane in our left?
+2. Is the car ahead in left lane going at or above our speed?
+3. Is the car in left lane atleast 20 seconds away based on our current speed (not relative speed as it may abruptly breakdown)?
+4. Is the car in left lane moving faster than car in our lane?
+5. Is car in left lane further ahead further away from car in front of us (may be redundant).
+6. Do we have enough room in left lane to squeeze in? That means is there a car behind us in left lane? That car should be atleast 100 meters behind and should not be speeding such that it makes up that distance in 100 seconds (i.e is not faster than us by 1 m/s or more).
+If all this is ok we decide to change lane to left lane.
+
+If left lane change is not possible repeat same logic for right lane.
+
+#### Function ProjectPath
+This function takes new lane change (car_d) and new speed as input along with car coordinates and previous path.
+We reuse upto 20 points from previous path, but if we are supposed to reduce speed we only use 10 points for quick reaction.
+Use Frenet car coordinates and find upto 100 points ahead of the car and convert these coodinates to global coordinates.
+This way we can test full move of the car from these values. The car will produce a lot of jerks that need to be smoothened.
+
+#### Function smoothCoordinates
+This function takes output of ProjectPath but only takes every 10th point of the global coordinate and creates a spline curve.
+We then use this spline to find smooth global coordinates.
+
+
 ### Simulator.
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases).
 
