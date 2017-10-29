@@ -23,6 +23,7 @@ double rad2deg(double x) { return x * 180 / pi(); }
 // The max s value before wrapping around the track back to 0
 double MAX_S = 6945.554;
 double MAX_SPEED = 49.5*1600/3600; //in meters/sec
+double max_speed_change = 0.10; //don't change speed too much to avoid max out accelerations
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -353,7 +354,7 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
     tk::spline s;
     s.set_points(x_val,y_val,true); //true is for cubic spline
     
-    int points = 30;
+    int points = 20;
     vector<double> xs_val, ys_val;
     //Take first point as is.
     double x0 = x_in[0];
@@ -436,11 +437,12 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
     
     int car_lane;
     
-    if(car_d <= 4) {
+    //use a little save zones for lanes
+    if(car_d > -0.5 && car_d <= 4.5) {
         car_lane = 0;
-    } else if(car_d > 4 && car_d <= 8) {
+    } else if(car_d > 3.5 && car_d <= 8.5) {
         car_lane = 1;
-    } else if(car_d > 8 && car_d <= 12) {
+    } else if(car_d > 7.5 && car_d <= 12) {
         car_lane = 2;
     }
     
@@ -497,7 +499,9 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
         cout << "slow, " ;
         if(car_lane > 0) { //we can try left lane first
             cout << " left, " ;
-            if(speed_car_ahead[car_lane-1] >= final_speed || closet_car_ahead[car_lane-1] > final_speed*20) {
+            if(speed_car_ahead[car_lane-1] >= final_speed
+               || closet_car_ahead[car_lane-1] > final_speed*20
+               || speed_car_ahead[car_lane-1] > speed_car_ahead[car_lane]) {
                 cout << " fast, ";
                 //see if front gap in that lane is greater that current lane
                 if(closet_car_ahead[car_lane-1] > closet_car_ahead[car_lane] ) {
@@ -506,7 +510,7 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
                     if(car_makeup < 100)
                         car_makeup = 100;
                     if(closet_car_behind[car_lane - 1] > car_makeup) {
-                        cout << " change lane to left " << closet_car_behind[car_lane - 1] << " > " << car_makeup << endl;
+                        cout << " change lane to left " << closet_car_behind[car_lane - 1] << " > " << car_makeup;
                         car_lane = car_lane - 1;
                     } else {
                         cout << " car behind too close " << closet_car_behind[car_lane - 1] << " < " << car_makeup;
@@ -519,7 +523,9 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
         //if we couldn't change to left, try to right.
         if(prev_lane == car_lane && car_lane < 2) {
             cout << " right, " ;
-            if(speed_car_ahead[car_lane+1] >= final_speed || closet_car_ahead[car_lane+1] > final_speed*20) {
+            if(speed_car_ahead[car_lane+1] >= final_speed
+               || closet_car_ahead[car_lane+1] > final_speed*20
+               || speed_car_ahead[car_lane+1] > speed_car_ahead[car_lane]) {
                 cout << " fast, ";
                 //see if front gap in that lane is greater that current lane
                 if(closet_car_ahead[car_lane+1] > closet_car_ahead[car_lane]) {
@@ -528,10 +534,10 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
                     if(car_makeup < 100)
                         car_makeup = 100;
                     if(closet_car_behind[car_lane + 1] > car_makeup) {
-                        cout << " change lane to right " << closet_car_behind[car_lane - 1] << ", " << car_makeup << endl;
+                        cout << " change lane to right " << closet_car_behind[car_lane + 1] << ", " << car_makeup;
                         car_lane = car_lane + 1;
                     } else {
-                        cout << " car behind too close " << closet_car_behind[car_lane - 1] << ", " << car_makeup;
+                        cout << " car behind too close " << closet_car_behind[car_lane + 1] << ", " << car_makeup;
                     }
                 }
             } else {
@@ -548,6 +554,8 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
 double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, double car_d, double car_speed) {
   
   double final_speed = MAX_SPEED;
+  double closest_car_s = 7000;
+  double closest_car_speed = MAX_SPEED;
     
   for(int i = 0; i < sensor_fusion.size();i++) {
     // car is in my lane
@@ -562,8 +570,13 @@ double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, dou
     // see if car at same lane (lane width is 4
     if (sf_d >= car_d - 2 && sf_d <= car_d + 2 && sf_s > car_s) {
       
-      double sf_speed = sqrt(sf_vx * sf_vx + sf_vy * sf_vy);
-      double sf_car_dist = sf_s - car_s;
+        double sf_speed = sqrt(sf_vx * sf_vx + sf_vy * sf_vy);
+        double sf_car_dist = sf_s - car_s;
+    
+        if(closest_car_s > sf_s) {
+            closest_car_s = sf_s;
+            closest_car_speed = sf_speed;
+        }
       
       //We want to keep safe distance from all cars in our lane that are ahead of us
       //that means we should have a gap such that it takes 30 seconds to cover based on relative velocity.
@@ -572,13 +585,13 @@ double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, dou
       //speed needed to cover the gap in 10 seconds
       double speed = sf_car_dist/10 + sf_speed;
       if(final_speed > speed) {
-        final_speed = speed*.95; //got at 5% less
+        final_speed = speed;
       }
     }
   }
-  //don't change speed too much to avoid max out accelerations
-  double max_speed_change = 0.10;
-    
+  if(final_speed > closest_car_speed && closest_car_s-car_s < 20) //20 meters gap seems good
+      final_speed = closest_car_speed ;
+   
   if(final_speed - car_speed > max_speed_change)
       final_speed = car_speed + max_speed_change;
   else if (final_speed - car_speed < -1 * max_speed_change)
@@ -700,7 +713,7 @@ int main() {
                 car_d = change_lane(sensor_fusion, car_s, car_d, car_speed, max_speed);
                 prev_change_s = car_s;
             } else {
-                if(max_speed > 10) { //only adjust lane when we are moving
+                if(max_speed > 10) { //only adjust lane when we are moving else cause shaking
                     car_d = int(car_d/4)*4 + 2;
                 }
             }
