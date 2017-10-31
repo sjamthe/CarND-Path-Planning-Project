@@ -22,7 +22,7 @@ double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
 // The max s value before wrapping around the track back to 0
 double MAX_S = 6945.554;
-double MAX_SPEED = 49.5*1600/3600; //in meters/sec
+double MAX_SPEED = 49.5*1600/3600; //is 22 meters/sec
 double max_speed_change = 0.11; //don't change speed too much to avoid max out accelerations
 
 // Checks if the SocketIO event has JSON data.
@@ -362,7 +362,7 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
     double heading = atan2(abs(wpnext_y-wp_y),abs(wpnext_x-wp_x));
     cout << "heading " << heading << " y,x " << wpnext_y <<  " , " << wpnext_x << endl;
     
-    if(heading > 0.78 && ref_x > 1500 && heading < 2.36 ) {
+    if(heading > 0.78 && (ref_x > 1500 || ref_x < 170) && heading < 2.36 ) {
         cout << " We are moving vertical ref_x, ref_y " << ref_x << ", " << ref_y << endl;
         //ideally make a spline by swapping y & x
         flip = 1;
