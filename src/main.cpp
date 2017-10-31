@@ -245,11 +245,11 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
     vector<double> x_vals;
     vector<double> y_vals;
     
-    //cout << "prev points = " << previous_path_x.size() << endl;
+    cout << "prev points = " << previous_path_x.size() << endl;
 
-    int points = 100;
+    int points = 200;
     
-    assert(car_d < 12);
+    assert(car_d <= 12 && car_d >= 0 );
   
     //previous path
     
@@ -260,7 +260,6 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
         if(i > 20 || (car_speed > max_speed && i > 10)) {
             break;
         }
-        
         x_vals.push_back(previous_path_x[i]);
         y_vals.push_back(previous_path_y[i]);
 
@@ -278,7 +277,7 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
 
     //add new points
     double prev_x = 0, prev_y = 0, max_s;
-    for(int i = 0; i < points; i++)
+    for(int i = 0; i < points; i=i+2) //increased points to 200 but take every other point
     {
         // s = ut + 1/2 a*t^2
         //double dist_inc = car_speed * .02 + 1/2*acc*.02*.02;
@@ -313,16 +312,71 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
         if(x_vals.size() >= points)
             break;
     }
-    //cout << "max S predicted " << max_s << " x,y " << xy[0] << ", " << xy[1] << endl;
+    cout << "max S predicted " << max_s << " diff s " << max_s - car_s << " x,y " << prev_x << ", " << prev_y << endl;
     return {x_vals, y_vals};
 }
 
+/*double getHeading(double ref_x, double ref_y, double ref_yaw, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y) {
+    
+    int closestWaypoint = ClosestWaypoint(x_in[0],y_in[0],maps_s,maps_x,maps_y);
+    int nextWaypoint;
+    
+    double wp_x = maps_x[closestWaypoint];
+    double wp_y = maps_y[closestWaypoint];
+    
+    if(closestWaypoint < maps_x.size()-1) {
+        nextWaypoint = closestWaypoint + 1;
+    } else {
+        nextWaypoint = 0; //circular track
+    }
+    int nextWaypoint = NextWaypoint(ref_x, ref_y, ref_yaw, maps_s,maps_x,maps_y);
+    double wpnext_x = maps_x[nextWaypoint];
+    double wpnext_y = maps_y[nextWaypoint];
+    
+    double heading = atan2((wpnext_y-ref_y),(wpnext_x-ref_x));
+    cout << "heading " << heading << " y,x " << wpnext_y <<  " , " << wpnext_x << endl;
+    return heading;
+}*/
+
 //convert the x_vals, y_vals to Vehicle space coordinates, fit a spline and get new points, then convert back to world x,y and return
-vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_in, double ref_x, double ref_y, double ref_yaw, double max_speed,
+vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_in, double ref_x, double ref_y,
+                                         double ref_yaw, double max_speed,
                                          double car_s, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y) {
     
     vector<double> x_val, y_val;
     double max_dist_inc = max_speed*0.02;
+    
+    bool flip = 0; //should we flip x & y
+    bool dir = 1; //means we are going forward in terms or x (or y if flip=1)
+    
+    int nextWaypoint = NextWaypoint(ref_x, ref_y, ref_yaw, maps_s,maps_x,maps_y);
+    double wpnext_x = maps_x[nextWaypoint];
+    double wpnext_y = maps_y[nextWaypoint];
+    int prevWaypoint = nextWaypoint - 1;
+    if(prevWaypoint == 0)
+        prevWaypoint = maps_s.size() - 1; //loop adjustment
+    
+    double wp_x = maps_x[prevWaypoint];
+    double wp_y = maps_y[prevWaypoint];
+    
+    double heading = atan2(abs(wpnext_y-wp_y),abs(wpnext_x-wp_x));
+    cout << "heading " << heading << " y,x " << wpnext_y <<  " , " << wpnext_x << endl;
+    
+    if(heading > 0.78 && ref_x > 1500 && heading < 2.36 ) {
+        cout << " We are moving vertical ref_x, ref_y " << ref_x << ", " << ref_y << endl;
+        //ideally make a spline by swapping y & x
+        flip = 1;
+        vector <double> tmp = x_in;
+        x_in = y_in;
+        y_in = tmp;
+    }
+    if(flip == 0) {
+        if(wpnext_x < ref_x)
+            dir = -1;
+    } else {
+        if(wpnext_y < ref_y)
+            dir = -1;
+    }
     
     vector<vector<double>> results = sortXY(x_in, y_in);
     //Take only 1/10 points to make a spline
@@ -344,27 +398,27 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
     xs_val.push_back(x0);
     ys_val.push_back(y0);
     //double s0 = car_s;
+    double x1;
     for (int i=1; i<points; i++) {
-        
-        double x1 = x0 + 0.1;
-        double y1 = s(x1);
-        //Find the angle that the car is moving at
-        double heading = atan2((y1-y0),(x1-x0));
-        //cout << "heading " << heading << endl;
-        //Make sure the car doesn't move faster than speed allowed (max_dist)
-        x0 = x0 + max_dist_inc * cos(heading);
+
+        if(flip == 0)
+            x0 = x0 + dir*max_dist_inc * cos(ref_yaw);
+        else
+            x0 = x0 + dir*max_dist_inc * sin(ref_yaw); //As we flipped x & y
         y0 = s(x0);
-        
+
         //validate the point by converting back to s,d
-        //vector<double> sd = getFrenet(x0, x0, ref_yaw, maps_s, maps_x, maps_y);
-        //cout << xy[0] << "," << xy[1] << ", " << car_next_s << "," << sd[0] << endl;
-        //if (sd[0] < s0 ) {
-        //    cout << car_s << " failed projection " << sd[0] << " < " << s0 << endl;
-        //}
+        vector<double> sd = getFrenet(x0, x0, ref_yaw, maps_s, maps_x, maps_y);
+        if(i <10)
+            cout << x0 << "," << y0 << ", " << car_s << "," << sd[0] << endl;
+
         xs_val.push_back(x0);
         ys_val.push_back(y0);
     }
-  //cout << "max_dist_inc = " << max_dist_inc << " , max_speed " << max_speed << " max x,y " << x0 << ", " << y0 << endl;
+    cout << "max_dist_inc = " << max_dist_inc << " , max_speed " << max_speed << " points " << xs_val.size() << endl;
+    if(flip) {
+        return {ys_val, xs_val};
+    }
     return {xs_val, ys_val};
 }
 
@@ -549,7 +603,8 @@ int main() {
   vector<double> map_waypoints_dy;
   double old_yaw = 0;
   double old_car_s = 0;
-    double prev_change_s = 0;
+  double prev_change_s = 0;
+  double old_speed = 0;
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
@@ -576,7 +631,8 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&old_yaw, &old_car_s, &prev_change_s](uWS::WebSocket<uWS::SERVER> ws,
+  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&old_yaw, &old_car_s,
+               &old_speed, &prev_change_s](uWS::WebSocket<uWS::SERVER> ws,
                 char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -603,6 +659,11 @@ int main() {
           	double car_yaw = j[1]["yaw"]; //even yaw appears to be wrong sometimes?
           	double car_speed = j[1]["speed"]; //speed returned is not acurate, don't use it.
             car_speed = car_speed*1600/3600; //in m/s
+            
+            if(abs(car_speed-old_speed) > 10) {
+                cout << "sudden speed change from " << old_speed << " to " << car_speed << endl;
+                car_speed = old_speed;
+            }
 
           	// Previous path data given to the Planner
           	auto previous_path_x = j[1]["previous_path_x"];
@@ -619,6 +680,15 @@ int main() {
             
             //We seem to be getting yaw very large, make it less than pi
             double ref_yaw = deg2rad(car_yaw);
+            
+            while (ref_yaw >= 2*pi()) {
+                cout << "reducing ref_yaw by 2pi " << ref_yaw << endl;
+                ref_yaw -= 2*pi();
+            }
+            /*if(ref_yaw - old_yaw > pi()/2) {
+                cout << "We may have flipped " << old_yaw << " new " << ref_yaw << endl;
+                ref_yaw = ref_yaw - pi();
+            }*/
            
             if(car_s > MAX_S)
                 car_s -= MAX_S;
@@ -626,8 +696,9 @@ int main() {
             //Use sensor_fusion data to find out what is the max speed we can move in this lane.
             double max_speed = max_speed_inlane(sensor_fusion, car_s, car_d, car_speed);
             
-            cout << "car_s, car_d, ref_yaw, car_speed, speed-diff " << car_s << ", " << car_d << ", " << ref_yaw << ", " << car_speed << ", " << max_speed-car_speed << endl;
-           
+            cout << "car_s, car_d, ref_yaw, car_speed, speed-diff, " << car_s << ", " << car_d << ", " << ref_yaw << ", " << car_speed << ", " << max_speed-car_speed << endl;
+            //assert(car_s  >=old_car_s -0.75);
+            
             //Allow lane change only every 50 meters to avoid frequent changes
             if(car_s - prev_change_s > 0 && max_speed > 10) {
                 //change lane if necessary else stick close to center of the lane car is already on.
@@ -649,6 +720,7 @@ int main() {
             
             old_yaw = ref_yaw;
             old_car_s = car_s;
+            old_speed = car_speed;
             
           	auto msg = "42[\"control\","+ msgJson.dump()+"]";
 
