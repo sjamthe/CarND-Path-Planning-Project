@@ -23,7 +23,7 @@ double rad2deg(double x) { return x * 180 / pi(); }
 // The max s value before wrapping around the track back to 0
 double MAX_S = 6945.554;
 double MAX_SPEED = 45.0*1600/3600; //is 22 meters/sec
-double max_speed_change = 0.15; //don't change speed too much to avoid max out accelerations
+double max_speed_change = 0.12; //don't change speed too much to avoid max out accelerations
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -45,7 +45,7 @@ double distance(double x1, double y1, double x2, double y2)
 	return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 }
 
-int ClosestWaypoint(double x, double y, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y)
+int ClosestWaypoint(double x, double y, vector<double> maps_x, vector<double> maps_y)
 {
 
 	double closestLen = 100000; //large number
@@ -68,10 +68,11 @@ int ClosestWaypoint(double x, double y, vector<double> maps_s, vector<double> ma
 
 }
 
-int NextWaypoint(double x, double y, double theta, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y)
+
+int NextWaypoint(double x, double y, double theta, vector<double> maps_x, vector<double> maps_y)
 {
     
-    int closestWaypoint = ClosestWaypoint(x,y,maps_s,maps_x,maps_y);
+    int closestWaypoint = ClosestWaypoint(x,y,maps_x,maps_y);
     int nextWaypoint;
     
     double wp_x = maps_x[closestWaypoint];
@@ -101,10 +102,10 @@ int NextWaypoint(double x, double y, double theta, vector<double> maps_s, vector
     } else {
         nextWaypoint = closestWaypoint;
     }
-    if(nextWaypoint == maps_s.size()-1) {
+    if(nextWaypoint == maps_x.size()) {
         nextWaypoint = 0;
     }
-    //cout << "returning " << nextWaypoint << endl;
+    cout << "returning next wp " << nextWaypoint << endl;
     
     return nextWaypoint;
     
@@ -112,7 +113,7 @@ int NextWaypoint(double x, double y, double theta, vector<double> maps_s, vector
 // Transform from Cartesian x,y coordinates to Frenet s,d coordinates
 vector<double> getFrenet(double x, double y, double theta, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y)
 {
-	int next_wp = NextWaypoint(x,y, theta, maps_s, maps_x, maps_y);
+	int next_wp = NextWaypoint(x,y, theta, maps_x, maps_y);
 
 	int prev_wp;
 	prev_wp = next_wp-1;
@@ -120,7 +121,7 @@ vector<double> getFrenet(double x, double y, double theta, vector<double> maps_s
 	{
 		prev_wp  = maps_x.size()-1;
 	}
-    //cout << "prev_wp = " << prev_wp << " , next_wp = " <<  next_wp << endl;
+    cout << "getFrenet: prev_wp = " << prev_wp << " , next_wp = " <<  next_wp  << " for x, y, theta " << x << ", " << y << ", " << theta << endl;
 	double n_x = maps_x[next_wp]-maps_x[prev_wp];
 	double n_y = maps_y[next_wp]-maps_y[prev_wp];
 	double x_x = x - maps_x[prev_wp];
@@ -172,8 +173,8 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 	int wp2 = (prev_wp+1)%maps_x.size();
 
 	double heading = atan2((maps_y[wp2]-maps_y[prev_wp]),(maps_x[wp2]-maps_x[prev_wp]));
-    //cout << "waypoints used " << prev_wp <<"," << wp2 << " heading = " << heading << endl;
-    //cout << "car at " << s << " between " << maps_s[prev_wp] << "," << maps_s[wp2] << endl;
+    cout << "getXY: waypoints used " << prev_wp <<"," << wp2 << " heading = " << heading ;
+    cout << " car at " << s << " between " << maps_s[prev_wp] << "," << maps_s[wp2] << endl;
 	// the x,y,s along the segment
 	double seg_s = (s-maps_s[prev_wp]);
 
@@ -246,7 +247,7 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
     vector<double> y_vals;
     
     //cout << "prev points = " << previous_path_x.size() << endl;
-    assert(car_d <= 12 && car_d >= 0 );
+    //assert(car_d <= 12 && car_d >= 0 );
   
     //previous path
     double car_next = car_s;
@@ -285,8 +286,8 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
       
         //change lane gradually, but upto 100 points
         double new_d = car_d;
-        if(i < 20)
-            new_d = prev_d + (car_d-prev_d)*(1+i)/20;
+        if(i < 12)
+            new_d = prev_d + (car_d-prev_d)*(1+i)/12;
         
         //convert freenet coordinates to XY
         xy = getXY(car_next_s, new_d, maps_s, maps_x, maps_y);
@@ -322,7 +323,7 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
     bool flip = 0; //should we flip x & y
     bool dir = 1; //means we are going forward in terms or x (or y if flip=1)
     
-    int nextWaypoint = NextWaypoint(ref_x, ref_y, ref_yaw, maps_s,maps_x,maps_y);
+    int nextWaypoint = NextWaypoint(ref_x, ref_y, ref_yaw, maps_x,maps_y);
     double wpnext_x = maps_x[nextWaypoint];
     double wpnext_y = maps_y[nextWaypoint];
     int prevWaypoint = nextWaypoint - 1;
@@ -383,8 +384,8 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
 
         //validate the point by converting back to s,d
         vector<double> sd = getFrenet(x0, x0, ref_yaw, maps_s, maps_x, maps_y);
-        if(i <5 && car_s >= 6900) //debug
-            cout << " car x, y " << ref_x << ", " << ref_y << " x0,y0 " << x0 << "," << y0 << ", " << car_s << "," << sd[0] << endl;
+        if(i <5) //debug
+            cout << " car x, y " << ref_x << ", " << ref_y << " x0,y0 " << x0 << "," << y0 << ", car_s, sd[0] " << car_s << "," << sd[0] << endl;
 
         xs_val.push_back(x0);
         ys_val.push_back(y0);
