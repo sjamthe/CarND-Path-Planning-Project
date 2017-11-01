@@ -22,8 +22,8 @@ double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
 // The max s value before wrapping around the track back to 0
 double MAX_S = 6945.554;
-double MAX_SPEED = 49.0*1600/3600; //is 22 meters/sec
-double max_speed_change = 0.11; //don't change speed too much to avoid max out accelerations
+double MAX_SPEED = 45.0*1600/3600; //is 22 meters/sec
+double max_speed_change = 0.15; //don't change speed too much to avoid max out accelerations
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -101,7 +101,7 @@ int NextWaypoint(double x, double y, double theta, vector<double> maps_s, vector
     } else {
         nextWaypoint = closestWaypoint;
     }
-    if(nextWaypoint == 181) {
+    if(nextWaypoint == maps_s.size()-1) {
         nextWaypoint = 0;
     }
     //cout << "returning " << nextWaypoint << endl;
@@ -245,14 +245,10 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
     vector<double> x_vals;
     vector<double> y_vals;
     
-    cout << "prev points = " << previous_path_x.size() << endl;
-
-    int points = 500;
-    
-    //assert(car_d <= 12 && car_d >= 0 );
+    //cout << "prev points = " << previous_path_x.size() << endl;
+    assert(car_d <= 12 && car_d >= 0 );
   
     //previous path
-    
     double car_next = car_s;
     //if we have prev_path points use upto 20 points from those
     for (int i=0; i<previous_path_x.size(); i++) {
@@ -276,20 +272,21 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
     }
 
     //add new points
+    int points = 50;
     double prev_x = 0, prev_y = 0, max_s;
-    for(int i = 0; i < points; i=i+10) //increased points to 200 but take every other point
+    for(int i = 0; i < points; i=i+1) //increased points to 500 but take every 10th point
     {
 
         double dist_inc = max_speed * .02;
-        double car_next_s = prev_dist + dist_inc*4;
+        double car_next_s = prev_dist + dist_inc*5; //increment 4x
         //as track is loop
         if(car_next_s > MAX_S)
           car_next_s -= MAX_S;
       
         //change lane gradually, but upto 100 points
         double new_d = car_d;
-        if(i < 100)
-            new_d = prev_d + (car_d-prev_d)*(1+i)/100;
+        if(i < 20)
+            new_d = prev_d + (car_d-prev_d)*(1+i)/20;
         
         //convert freenet coordinates to XY
         xy = getXY(car_next_s, new_d, maps_s, maps_x, maps_y);
@@ -306,8 +303,8 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
         x_vals.push_back(xy[0]);
         y_vals.push_back(xy[1]);
 
-        if(x_vals.size() >= points)
-            break;
+        //if(x_vals.size() >= points)
+        //    break;
     }
     cout << "max S predicted " << max_s << " diff s " << max_s - car_s << " x,y " << prev_x << ", " << prev_y << endl;
     return {x_vals, y_vals};
@@ -386,7 +383,7 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
 
         //validate the point by converting back to s,d
         vector<double> sd = getFrenet(x0, x0, ref_yaw, maps_s, maps_x, maps_y);
-        if(i <5 && car_s > 6914)
+        if(i <5 && car_s >= 6900) //debug
             cout << " car x, y " << ref_x << ", " << ref_y << " x0,y0 " << x0 << "," << y0 << ", " << car_s << "," << sd[0] << endl;
 
         xs_val.push_back(x0);
@@ -553,11 +550,20 @@ double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, dou
   if(final_speed > closest_car_speed && closest_car_s-car_s < 20) //20 meters gap seems good
       final_speed = closest_car_speed ;
    
-  if(final_speed - car_speed > max_speed_change)
-      final_speed = car_speed + max_speed_change;
-  else if (final_speed - car_speed < -1 * max_speed_change)
-      final_speed = car_speed - max_speed_change; //slow down faster
-
+    if(final_speed - car_speed > max_speed_change) {
+        //if we are 90% of max speed accelerate slower
+        if(car_speed > 0.9*MAX_SPEED)
+            final_speed = car_speed + max_speed_change*.7;
+        else
+            final_speed = car_speed + max_speed_change;
+    }
+    //if we are 90% of max speed decelerate regular else slower
+    else if (final_speed - car_speed < -2 * max_speed_change) {
+        if(car_speed > 0.8*MAX_SPEED)
+            final_speed = car_speed - max_speed_change*1.5;
+        else
+            final_speed = car_speed - max_speed_change;
+    }
   return final_speed;
 }
 
@@ -654,30 +660,26 @@ int main() {
                 cout << "reducing ref_yaw by 2pi " << ref_yaw << endl;
                 ref_yaw -= 2*pi();
             }
-            /*if(ref_yaw - old_yaw > pi()/2) {
-                cout << "We may have flipped " << old_yaw << " new " << ref_yaw << endl;
-                ref_yaw = ref_yaw - pi();
-            }*/
            
-            if(car_s > MAX_S)
+            /*if(car_s > MAX_S)
                 car_s -= MAX_S;
-
+             */
             //Use sensor_fusion data to find out what is the max speed we can move in this lane.
             double max_speed = max_speed_inlane(sensor_fusion, car_s, car_d, car_speed);
             
             cout << "car_s, car_d, ref_yaw, car_speed, speed-diff, " << car_s << ", " << car_d << ", " << ref_yaw << ", " << car_speed << ", " << max_speed-car_speed << endl;
             //assert(car_s  >=old_car_s -0.75);
             
-            //Allow lane change only every 50 meters to avoid frequent changes
-            if(car_s - prev_change_s > 0 && max_speed > 10) {
+            //Allow lane change only when moving above 8 m/s
+            if(max_speed > 8) {
                 //change lane if necessary else stick close to center of the lane car is already on.
                 car_d = change_lane(sensor_fusion, car_s, car_d, car_speed, max_speed);
                 prev_change_s = car_s;
-            } else {
+            } /*else {
                 if(max_speed > 10) { //only adjust lane when we are moving else cause shaking
                     car_d = int(car_d/4)*4 + 2;
                 }
-            }
+            }*/
             
             vector<vector<double>> results = projectPath(car_s, car_d, ref_yaw, car_speed, max_speed, previous_path_x,
                                                         previous_path_y, map_waypoints_s, map_waypoints_x, map_waypoints_y);
