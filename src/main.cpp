@@ -22,7 +22,7 @@ double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
 // The max s value before wrapping around the track back to 0
 double MAX_S = 6945.554;
-double MAX_SPEED = 45.0*1600/3600; //is 22 meters/sec
+double MAX_SPEED = 45.0*1600/3600; //is 20 meters/sec
 double max_speed_change = 0.12; //don't change speed too much to avoid max out accelerations
 
 // Checks if the SocketIO event has JSON data.
@@ -105,7 +105,7 @@ int NextWaypoint(double x, double y, double theta, vector<double> maps_x, vector
     if(nextWaypoint == maps_x.size()) {
         nextWaypoint = 0;
     }
-    cout << "returning next wp " << nextWaypoint << endl;
+    //cout << "returning next wp " << nextWaypoint << endl;
     
     return nextWaypoint;
     
@@ -121,7 +121,7 @@ vector<double> getFrenet(double x, double y, double theta, vector<double> maps_s
 	{
 		prev_wp  = maps_x.size()-1;
 	}
-    cout << "getFrenet: prev_wp = " << prev_wp << " , next_wp = " <<  next_wp  << " for x, y, theta " << x << ", " << y << ", " << theta << endl;
+    //cout << "getFrenet: prev_wp = " << prev_wp << " , next_wp = " <<  next_wp  << " for x, y, theta " << x << ", " << y << ", " << theta << endl;
 	double n_x = maps_x[next_wp]-maps_x[prev_wp];
 	double n_y = maps_y[next_wp]-maps_y[prev_wp];
 	double x_x = x - maps_x[prev_wp];
@@ -173,8 +173,8 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 	int wp2 = (prev_wp+1)%maps_x.size();
 
 	double heading = atan2((maps_y[wp2]-maps_y[prev_wp]),(maps_x[wp2]-maps_x[prev_wp]));
-    cout << "getXY: waypoints used " << prev_wp <<"," << wp2 << " heading = " << heading ;
-    cout << " car at " << s << " between " << maps_s[prev_wp] << "," << maps_s[wp2] << endl;
+    //cout << "getXY: waypoints used " << prev_wp <<"," << wp2 << " heading = " << heading ;
+    //cout << " car at " << s << " between " << maps_s[prev_wp] << "," << maps_s[wp2] << endl;
 	// the x,y,s along the segment
 	double seg_s = (s-maps_s[prev_wp]);
 
@@ -286,8 +286,8 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
       
         //change lane gradually, but upto 100 points
         double new_d = car_d;
-        if(i < 12)
-            new_d = prev_d + (car_d-prev_d)*(1+i)/12;
+        if(i < 14)
+            new_d = prev_d + (car_d-prev_d)*(1+i)/14;
         
         //convert freenet coordinates to XY
         xy = getXY(car_next_s, new_d, maps_s, maps_x, maps_y);
@@ -303,11 +303,13 @@ vector<vector<double>> projectPath(double car_s, double car_d, double ref_yaw, d
         //add only unique x values
         x_vals.push_back(xy[0]);
         y_vals.push_back(xy[1]);
-
-        //if(x_vals.size() >= points)
-        //    break;
     }
-    cout << "max S predicted " << max_s << " diff s " << max_s - car_s << " x,y " << prev_x << ", " << prev_y << endl;
+    
+    double diff_s = max_s - car_s;
+    if(diff_s < 0)
+        diff_s += MAX_S;
+    
+    cout << "max S predicted " << max_s << " diff s " << diff_s << " x,y " << prev_x << ", " << prev_y << endl;
     return {x_vals, y_vals};
 }
 
@@ -334,11 +336,11 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
     double wp_y = maps_y[prevWaypoint];
     
     double heading = atan2(abs(wpnext_y-wp_y),abs(wpnext_x-wp_x));
-    cout << "heading " << heading << " wp x,y " << wp_x <<  " , " << wp_y <<
-            " wpnext x, y " << wpnext_x <<  " , " << wpnext_y << endl;
+    //cout << "heading " << heading << " wp x,y " << wp_x <<  " , " << wp_y <<
+    //        " wpnext x, y " << wpnext_x <<  " , " << wpnext_y << endl;
     
     if(heading > 0.78 && (ref_x > 1500 || ref_x < 170) && heading < 2.36 ) {
-        cout << " We are moving vertical ref_x, ref_y " << ref_x << ", " << ref_y << endl;
+        //cout << " We are moving vertical ref_x, ref_y " << ref_x << ", " << ref_y << endl;
         //ideally make a spline by swapping y & x
         flip = 1;
         vector <double> tmp = x_in;
@@ -372,9 +374,11 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
     double y0 = s(x_in[0]);
     xs_val.push_back(x0);
     ys_val.push_back(y0);
+    cout << " car x, y " << ref_x << ", " << ref_y << " x0,y0 " << x0 << "," << y0 << ", car_s " << car_s << endl;
+
     //double s0 = car_s;
     double x1;
-    for (int i=1; i<points; i++) {
+    for (int i=0; i<points; i++) {
 
         if(flip == 0)
             x0 = x0 + dir*max_dist_inc * cos(ref_yaw);
@@ -384,7 +388,7 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
 
         //validate the point by converting back to s,d
         vector<double> sd = getFrenet(x0, x0, ref_yaw, maps_s, maps_x, maps_y);
-        if(i <5) //debug
+        if(i <3) //debug
             cout << " car x, y " << ref_x << ", " << ref_y << " x0,y0 " << x0 << "," << y0 << ", car_s, sd[0] " << car_s << "," << sd[0] << endl;
 
         xs_val.push_back(x0);
@@ -437,7 +441,7 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
         
         int sf_lane = int(sf_d/4); //lane of this car
         
-        if(sf_car_dist > 0) { //car is ahead
+        if(sf_car_dist >= 0) { //car is ahead
             if(sf_car_dist < closet_car_ahead[sf_lane]) {
                 closet_car_ahead[sf_lane] = sf_car_dist;
                 speed_car_ahead[sf_lane] = sf_speed;
@@ -553,17 +557,17 @@ double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, dou
    
     if(final_speed - car_speed > max_speed_change) {
         //if we are 90% of max speed accelerate slower
-        if(car_speed > 0.9*MAX_SPEED)
-            final_speed = car_speed + max_speed_change*.7;
+        if(car_speed >= 0.9*MAX_SPEED)
+            final_speed = car_speed ;
         else
             final_speed = car_speed + max_speed_change;
     }
     //if we are 90% of max speed decelerate regular else slower
     else if (final_speed - car_speed < -2 * max_speed_change) {
         if(car_speed > 0.8*MAX_SPEED)
-            final_speed = car_speed - max_speed_change*1.5;
+            final_speed = car_speed - max_speed_change*1.8;
         else
-            final_speed = car_speed - max_speed_change;
+            final_speed = car_speed - max_speed_change*1.2;
     }
   return final_speed;
 }
