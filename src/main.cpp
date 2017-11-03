@@ -279,8 +279,12 @@ vector<vector<double>> projectPath(double car_s, double car_d, double new_d, dou
     for(int i = 0; i < points; i=i+1) //increased points to 500 but take every 10th point
     {
 
-        double dist_inc = max_speed * .02;
-        double car_next_s = prev_dist + dist_inc*5; //increment 4x
+        double dist_inc = max_speed * .02*5;//increment 5x
+        if(i > 30)
+            dist_inc = max_speed * .02*10;
+        
+        double car_next_s = prev_dist + dist_inc;
+        
         //as track is loop
         if(car_next_s > MAX_S)
           car_next_s -= MAX_S;
@@ -415,11 +419,11 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
     int car_lane;
     
     //use a little save zones for lanes
-    if(car_d > -0.5 && car_d <= 4.5) {
+    if(car_d <= 4.5) {
         car_lane = 0;
     } else if(car_d > 3.5 && car_d <= 8.5) {
         car_lane = 1;
-    } else if(car_d > 7.5 && car_d <= 12) {
+    } else {
         car_lane = 2;
     }
     
@@ -484,9 +488,10 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
     //and there is enough gap (30 seconds?) in front and back to change lane.
     double prev_lane = car_lane;
     int front_gap = 30;
-    int rear_gap = 40;
+    int rear_gap = 50;
+    int prefer_lane = 1;
     
-    if(final_speed < MAX_SPEED && closet_car_ahead[car_lane] < front_gap) {
+    if((final_speed < MAX_SPEED && closet_car_ahead[car_lane] < front_gap) || car_lane != prefer_lane) {
         cout << "slow speed and car in front " << closet_car_ahead[car_lane] << " > front_gap , ";
         if(car_lane > 0) { //we can try left lane first
             cout << " left, " ;
@@ -496,9 +501,9 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
                 if(closet_car_ahead[car_lane-1] > front_gap ) {
                     cout << " room ahead, ";
                     if(closet_car_behind[car_lane - 1] > rear_gap) {
-                       if((speed_car_behind[car_lane - 1] - final_speed)*5 < rear_gap ) {
+                       if((speed_car_behind[car_lane - 1] - final_speed)*8 < rear_gap ) {
                            cout << " change lane to left " << closet_car_behind[car_lane - 1] << " > " << rear_gap <<
-                           " && speed diff " && (speed_car_behind[car_lane - 1] - final_speed);
+                           " && speed diff " << (speed_car_behind[car_lane - 1] - final_speed);
                            car_lane = car_lane - 1;
                        } else {
                            cout << car_lane << " don't change to left as car behind too fast " << (speed_car_behind[car_lane - 1] - final_speed)*10 <<
@@ -523,9 +528,9 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
                 if(closet_car_ahead[car_lane+1] > front_gap) {
                     cout << " room ahead, ";
                     if(closet_car_behind[car_lane + 1] > rear_gap) {
-                        if((speed_car_behind[car_lane + 1] - final_speed)*5 < rear_gap) {
+                        if((speed_car_behind[car_lane + 1] - final_speed)*8 < rear_gap) {
                             cout << " change lane to right " << closet_car_behind[car_lane + 1] << " > " << rear_gap <<
-                            " && speed diff " && (speed_car_behind[car_lane + 1] - final_speed);
+                            " && speed diff " << (speed_car_behind[car_lane + 1] - final_speed);
                             car_lane = car_lane + 1;
                         } else {
                             cout << "don't change to right as car behind too fast " << (speed_car_behind[car_lane + 1] - final_speed)*10 <<
