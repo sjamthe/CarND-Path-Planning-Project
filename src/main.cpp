@@ -22,8 +22,13 @@ double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
 // The max s value before wrapping around the track back to 0
 double MAX_S = 6945.554;
-double MAX_SPEED = 45.0*1600/3600; //is 20 meters/sec
-double max_speed_change = 0.12; //don't change speed too much to avoid max out accelerations
+double MAX_SPEED = 46*1600/3600; //is 20 meters/sec
+double MAX_ACC = 0.12;
+double NORM_DEC = 0.12;
+double MAX_DEC = 0.20;
+double SAFE_GAP = 20;
+
+//double max_speed_change = 0.12; //don't change speed too much to avoid max out accelerations
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -470,8 +475,9 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
                 speed_car_ahead[sf_lane] = sf_speed;
             }
         } else { //car is behind
-            if(sf_car_dist < closet_car_behind[sf_lane]) {
-                closet_car_behind[sf_lane] = -1*sf_car_dist;
+            cout << "car behind at " << abs(sf_car_dist) << " , lane = " << sf_lane << endl;
+            if(abs(sf_car_dist) < closet_car_behind[sf_lane]) {
+                closet_car_behind[sf_lane] = abs(sf_car_dist);
                 speed_car_behind[sf_lane] = sf_speed;
             }
         }
@@ -488,7 +494,7 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
     //and there is enough gap (30 seconds?) in front and back to change lane.
     double prev_lane = car_lane;
     int front_gap = 30;
-    int rear_gap = 65;
+    int rear_gap = 30;
     int prefer_lane = 1;
     
     if((final_speed < MAX_SPEED && closet_car_ahead[car_lane] < front_gap) || car_lane != prefer_lane) {
@@ -557,70 +563,87 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
 //Use sensor_fusion data to find out what is the max speed we can move in this lane.
 double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, double car_d, double car_speed) {
   
-  double final_speed = MAX_SPEED;
-  double closest_car_dist = 7000;
-  double closest_car_speed = MAX_SPEED;
-    
-  for(int i = 0; i < sensor_fusion.size();i++) {
-    // car is in my lane
-    int sf_id = sensor_fusion[i][0];
-    double sf_x = sensor_fusion[i][1];
-    double sf_y = sensor_fusion[i][2];
-    double sf_vx = sensor_fusion[i][3];
-    double sf_vy = sensor_fusion[i][4];
-    double sf_s = sensor_fusion[i][5];
-    double sf_d = sensor_fusion[i][6];
-    
-    // see if car at same lane (lane width is 4
-    if (sf_d >= car_d - 2 && sf_d <= car_d + 2 ) {
-        
-        if(sf_s < car_s && (car_s - sf_s) < MAX_S/2) {
-            //this car is behind us.
-            continue;
+    double final_speed = car_speed;
+    double closest_car_dist = 7000;
+    double closest_car_speed = MAX_SPEED;
+
+    for(int i = 0; i < sensor_fusion.size();i++) {
+        // car is in my lane
+        int sf_id = sensor_fusion[i][0];
+        double sf_x = sensor_fusion[i][1];
+        double sf_y = sensor_fusion[i][2];
+        double sf_vx = sensor_fusion[i][3];
+        double sf_vy = sensor_fusion[i][4];
+        double sf_s = sensor_fusion[i][5];
+        double sf_d = sensor_fusion[i][6];
+
+        // see if car at same lane (lane width is 4
+        if (sf_d >= car_d - 2 && sf_d <= car_d + 2 ) {
+            
+            if(sf_s < car_s && (car_s - sf_s) < MAX_S/2) {
+                //this car is behind us.
+                continue;
+            }
+          
+            double sf_speed = sqrt(sf_vx * sf_vx + sf_vy * sf_vy);
+            
+            double sf_car_dist = sf_s - car_s;
+            //handle circular track situation
+            if(sf_car_dist < 0) {
+                sf_car_dist = MAX_S - car_s + sf_s;
+            }
+            
+            if(closest_car_dist > sf_car_dist) {
+                closest_car_dist = sf_car_dist;
+                closest_car_speed = sf_speed;
+            }
+          
+          //We want to keep safe distance from all cars in our lane that are ahead of us
+          //that means we should have a gap such that it takes 5 seconds to cover based on relative velocity.
+          //We should look at all cars not just the closet car as there may be accident ahead and closet car may not have reacted to it.
+          
+          //speed needed to cover the gap in 5 seconds
+          double speed = (sf_car_dist - SAFE_GAP)/5 + sf_speed;
+          if(final_speed > speed) {
+            final_speed = speed;
+          }
         }
-      
-        double sf_speed = sqrt(sf_vx * sf_vx + sf_vy * sf_vy);
-        
-        double sf_car_dist = sf_s - car_s;
-        //handle circular track situation
-        if(sf_car_dist < 0) {
-            sf_car_dist = MAX_S - car_s + sf_s;
-        }
-        
-        if(closest_car_dist > sf_car_dist) {
-            closest_car_dist = sf_car_dist;
-            closest_car_speed = sf_speed;
-        }
-      
-      //We want to keep safe distance from all cars in our lane that are ahead of us
-      //that means we should have a gap such that it takes 5 seconds to cover based on relative velocity.
-      //We should look at all cars not just the closet car as there may be accident ahead and closet car may not have reacted to it.
-      
-      //speed needed to cover the gap in 5 seconds
-      double speed = sf_car_dist/5 + sf_speed;
-      if(final_speed > speed) {
-        final_speed = speed;
-      }
     }
-  }
-  if(final_speed > closest_car_speed && closest_car_dist < 20) //20 meters gap seems good
-      final_speed = closest_car_speed ; //maintain speed of the car ahead.
-   
-    if(final_speed - car_speed > max_speed_change) {
-        //if we are 90% of max speed accelerate slower
-        if(car_speed >= 0.9*MAX_SPEED)
-            final_speed = car_speed ;
-        else
-            final_speed = car_speed + max_speed_change;
+    cout << "closest_car_speed = " << closest_car_speed << ", final speed " << final_speed ;
+    //are we going faster than closest car?
+    if(final_speed > closest_car_speed && closest_car_dist < SAFE_GAP) { //30 meters gap seems good
+        final_speed = closest_car_speed ; //maintain speed of the car ahead.
+        cout << ", slowing down for closest car " << final_speed ;
     }
+    
+    if(final_speed >= 0.9*MAX_SPEED) {
+        //slow down is we are speeding
+        final_speed = car_speed - MAX_DEC;
+        cout << ", slowing down for > 0.9 MAX " << final_speed ;
+    } else if(final_speed == car_speed) {
+        //normal mode
+        final_speed = car_speed + MAX_ACC;
+        cout << ", normal accl " << final_speed ;
+    }
+    
+    //Keep acc in check
+    if((final_speed - car_speed)*1.01 > MAX_ACC) {
+        final_speed = car_speed + MAX_ACC; //acceleration in check
+        cout << ", max acc in check " << final_speed ;
+    }
+    //deceleration in check
     //if we are 90% of max speed decelerate regular else slower
-    else if (final_speed - car_speed < -2 * max_speed_change) {
-        if(car_speed > 0.8*MAX_SPEED)
-            final_speed = car_speed - max_speed_change*1.8;
-        else
-            final_speed = car_speed - max_speed_change*1.2;
+    if (car_speed - final_speed > MAX_DEC) {
+        if(final_speed >= 0.9*MAX_SPEED) {
+            final_speed = car_speed - MAX_DEC;
+            cout << ", max deceleration " << final_speed ;
+        } else {
+            final_speed = car_speed - NORM_DEC;
+            cout << ", normal deceleration " << final_speed ;
+        }
     }
-  return final_speed;
+    cout << " final = " << final_speed << endl;
+    return final_speed;
 }
 
 int main() {
@@ -732,6 +755,11 @@ int main() {
                 //change lane if necessary else stick close to center of the lane car is already on.
                 new_d = change_lane(sensor_fusion, car_s, car_d, car_speed, max_speed);
                 prev_change_s = car_s;
+            }
+            //don't change speed if changing lane to reduce accl limit
+            if(int(new_d/4) != int(car_d/4)) {
+                max_speed = car_speed;
+                cout << "no change in speed for lane change max_speed = " << max_speed << endl;
             }
             
             vector<vector<double>> results = projectPath(car_s, car_d, new_d, ref_yaw, car_speed, max_speed, previous_path_x,
