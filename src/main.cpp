@@ -505,7 +505,7 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
     double prev_lane = car_lane;
     int front_gap = 35;
     int rear_gap = 30;
-    int prefer_lane = 0;
+    int prefer_lane = 1;
     
     if((final_speed < MAX_SPEED && closet_car_ahead[car_lane] < front_gap) || car_lane != prefer_lane) {
         cout << "slow speed and car in front " << closet_car_ahead[car_lane] << " > front_gap , ";
