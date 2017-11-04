@@ -170,7 +170,7 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 	int prev_wp = -1;
 
     //Find the way point that is just in front of the car (s)
-	while(s > maps_s[prev_wp+1] && (prev_wp + 1 < (int)(maps_s.size()-1) ))
+	while(s > maps_s[prev_wp+1] && (prev_wp + 1 < (int)(maps_s.size()) ))
 	{
 		prev_wp++;
 	}
@@ -402,9 +402,10 @@ vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_i
         y0 = s(x0);
 
         //validate the point by converting back to s,d
-        vector<double> sd = getFrenet(x0, x0, ref_yaw, maps_s, maps_x, maps_y);
+        vector<double> sd = getFrenet(x0, y0, ref_yaw, maps_s, maps_x, maps_y);
         if(i <3) //debug
-            cout << " car x, y " << ref_x << ", " << ref_y << " x0,y0 " << x0 << "," << y0 << ", car_s, sd[0] " << car_s << "," << sd[0] << endl;
+            cout << " car x, y, " << ref_x << ", " << ref_y << " x0,y0, " << x0 << "," << y0 << ", car_s, sd[0], " <<
+            car_s << "," << sd[0] << ", sd[1], " << sd[1] << endl;
 
         xs_val.push_back(x0);
         ys_val.push_back(y0);
@@ -458,12 +459,12 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
         if(sf_car_dist > MAX_S/2) {
             //we are crossing the loop but sf_car is actually behind us.
             cout << sf_d << " before adjustment " << sf_car_dist << " after " ;
-            sf_car_dist = sf_s - MAX_S + (0 - car_s);
+            sf_car_dist = MAX_S - sf_s + car_s;
             cout << sf_car_dist << endl;
         } else if (sf_car_dist < -1*MAX_S/2) {
             //we are behind the 0 point but sf_s is ahead of us.
             cout << sf_d << " before adjustment " << sf_car_dist << " after " ;
-            sf_car_dist = sf_s - 0 + MAX_S - car_s;
+            sf_car_dist = MAX_S - car_s + sf_s;
             cout << sf_car_dist << endl;
         }
         
@@ -504,7 +505,7 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
     double prev_lane = car_lane;
     int front_gap = 35;
     int rear_gap = 30;
-    int prefer_lane = 1;
+    int prefer_lane = 0;
     
     if((final_speed < MAX_SPEED && closet_car_ahead[car_lane] < front_gap) || car_lane != prefer_lane) {
         cout << "slow speed and car in front " << closet_car_ahead[car_lane] << " > front_gap , ";
@@ -603,6 +604,8 @@ double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, dou
             //handle circular track situation
             if(sf_car_dist < 0) {
                 sf_car_dist = MAX_S - car_s + sf_s;
+                cout << "handling circular track in max_speed_inlane sf_car_dist, " <<  sf_car_dist << ", "
+                        << sf_s << ", " << car_s << endl;
             }
             
             if(closest_car_dist > sf_car_dist) {
