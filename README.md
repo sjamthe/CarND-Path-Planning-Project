@@ -3,7 +3,7 @@ Self-Driving Car Engineer Nanodegree Program
 
 ### Results
 
-Car was able to travel 5.9 miles (> 1 loop) without any incident as evident by this image and [video](https://youtu.be/QM4aEGEshes).
+Car was able to travel 16.9 miles (> 1 loop) without any incident as evident by this image and [video](https://youtu.be/QM4aEGEshes).
 
 [![Project Video](data/final.png)](https://youtu.be/QM4aEGEshes)
 
