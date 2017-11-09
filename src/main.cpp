@@ -22,10 +22,10 @@ double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
 // The max s value before wrapping around the track back to 0
 double MAX_S = 6945.554;
-double MAX_SPEED = 46*1600/3600; //is 20 meters/sec
+double MAX_SPEED = 49.5*1600/3600; //is 20 meters/sec
 double MAX_ACC = 0.12;
 double NORM_DEC = 0.12;
-double MAX_DEC = 0.20;
+double MAX_DEC = 0.22;
 double SAFE_GAP = 20;
 
 //double max_speed_change = 0.12; //don't change speed too much to avoid max out accelerations
@@ -244,177 +244,120 @@ vector<vector<double>>  sortXY(vector <double> x_vals, vector < double> y_vals) 
 // After taking some previous values for smooth transition it predict new path.
 // We first deternime the cars next path in Frenet. We increase car_s by velocity*0.02 and also adjust car_d slightly over 100 points
 // The frenet coordinates are conveted to global coordinates and returned.
-vector<vector<double>> projectPath(double car_s, double car_d, double new_d, double ref_yaw, double car_speed, double max_speed,
+vector<vector<double>> projectPath(double car_x, double car_y, double car_s, double car_d, double new_d, double car_yaw,
+                                   double car_speed, double final_speed,
              vector<double> previous_path_x, vector<double> previous_path_y, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y)
 {
-    vector<double> xy;
     vector<double> x_vals;
     vector<double> y_vals;
     
-    //cout << "prev points = " << previous_path_x.size() << endl;
-    //assert(car_d <= 12 && car_d >= 0 );
-  
-    //previous path
-    double car_next = car_s;
-    //if we have prev_path points use upto 20 points from those
-    for (int i=0; i<previous_path_x.size(); i++) {
-        //skip history is we need to slow down.
-        if(i > 20 || (car_speed > max_speed && i > 10)) {
-            break;
-        }
-        x_vals.push_back(previous_path_x[i]);
-        y_vals.push_back(previous_path_y[i]);
-
-    }
+    int total_points = 50;
     
-    //make sure we get the last points so car doesn't go back.
-    double prev_dist = car_s;
-    double prev_d = car_d; //lane car was headed (but initialize it)
-    if(x_vals.size() > 0) {
-        vector<double> sd = getFrenet(x_vals[x_vals.size()-1],y_vals[x_vals.size()-1],ref_yaw,maps_s,maps_x,maps_y);
-        prev_dist = sd[0];
-        //prev_d = sd[1];
-        //cout << "prev " << prev_dist << ", " << prev_d << endl;
-    }
-
-    //add new points
-    int points = 50;
-    double prev_x = 0, prev_y = 0, max_s;
-    cout << "new_d = " ;
-    for(int i = 0; i < points; i=i+1) //increased points to 500 but take every 10th point
-    {
-
-        double dist_inc = max_speed * .02*5;//increment 5x
-        if(i > 30)
-            dist_inc = max_speed * .02*10;
+    double prev_size = previous_path_x.size();
+    
+    //cout << "prev_size = " << prev_size << endl;
+    //initialize ref to car's location. this changes only if we use prev points
+    double ref_x = car_x;
+    double ref_y = car_y;
+    double ref_yaw = car_yaw;
+    
+    //start new path aligned with the angle of the car
+    if(prev_size < 2) {
+        double prev_car_x = car_x - cos(car_yaw);
+        double prev_car_y = car_y - sin(car_yaw);
         
-        double car_next_s = prev_dist + dist_inc;
+        x_vals.push_back(prev_car_x);
+        x_vals.push_back(car_x);
         
-        //as track is loop
-        if(car_next_s > MAX_S)
-          car_next_s -= MAX_S;
-      
-        //change lane gradually, but upto 100 points
-        int shift_points = 10;
-        if(abs(new_d - prev_d) > 2) {
-            shift_points = 30; //shift slowly
-        }
-        if(i < shift_points) {
-            car_d = prev_d + (new_d-prev_d)*(1+i)/shift_points;
-            cout << car_d << ", " ;
-        }
-        //convert freenet coordinates to XY
-        xy = getXY(car_next_s, car_d, maps_s, maps_x, maps_y);
-      
-        //validate the point by converting back to s,d
-        vector<double> sd = getFrenet(xy[0], xy[1], ref_yaw, maps_s, maps_x, maps_y);
-        max_s = sd[0];
-
-        //car_next_s = sd[0];
-        prev_x = xy[0];
-        prev_y = xy[1];
-        prev_dist = car_next_s;
-        //add only unique x values
-        x_vals.push_back(xy[0]);
-        y_vals.push_back(xy[1]);
+        y_vals.push_back(prev_car_y);
+        y_vals.push_back(car_y);
     }
-    cout << endl;
-    
-    double diff_s = max_s - car_s;
-    if(diff_s < 0)
-        diff_s += MAX_S;
-    
-    cout << "max S predicted " << max_s << " diff s " << diff_s << " x,y " << prev_x << ", " << prev_y << endl;
-    return {x_vals, y_vals};
-}
-
-
-//convert the x_vals, y_vals to Vehicle space coordinates, fit a spline and get new points, then convert back to world x,y and return
-vector<vector<double>> smoothCoordinates(vector<double> x_in, vector<double> y_in, double ref_x, double ref_y,
-                                         double ref_yaw, double max_speed,
-                                         double car_s, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y) {
-    
-    vector<double> x_val, y_val;
-    double max_dist_inc = max_speed*0.02;
-    
-    bool flip = 0; //should we flip x & y
-    bool dir = 1; //means we are going forward in terms or x (or y if flip=1)
-    
-    int nextWaypoint = NextWaypoint(ref_x, ref_y, ref_yaw, maps_x,maps_y);
-    double wpnext_x = maps_x[nextWaypoint];
-    double wpnext_y = maps_y[nextWaypoint];
-    int prevWaypoint = nextWaypoint - 1;
-    if(prevWaypoint == 0)
-        prevWaypoint = maps_s.size() - 1; //loop adjustment
-    
-    double wp_x = maps_x[prevWaypoint];
-    double wp_y = maps_y[prevWaypoint];
-    
-    double heading = atan2(abs(wpnext_y-wp_y),abs(wpnext_x-wp_x));
-    //cout << "heading " << heading << " wp x,y " << wp_x <<  " , " << wp_y <<
-    //        " wpnext x, y " << wpnext_x <<  " , " << wpnext_y << endl;
-    
-    if(heading > 0.78 && (ref_x > 1500 || ref_x < 170) && heading < 2.36 ) {
-        //cout << " We are moving vertical ref_x, ref_y " << ref_x << ", " << ref_y << endl;
-        //ideally make a spline by swapping y & x
-        flip = 1;
-        vector <double> tmp = x_in;
-        x_in = y_in;
-        y_in = tmp;
+    else { //start with two last points from prev_path
+        ref_x = previous_path_x[prev_size-1];
+        ref_y = previous_path_y[prev_size-1];
+        
+        double prev_ref_x = previous_path_x[prev_size-2];
+        double prev_ref_y = previous_path_y[prev_size-2];
+        ref_yaw = atan2(ref_y-prev_ref_y, ref_x-prev_ref_x);
+        
+        x_vals.push_back(prev_ref_x);
+        x_vals.push_back(ref_x);
+        
+        y_vals.push_back(prev_ref_y);
+        y_vals.push_back(ref_y);
     }
-    if(flip == 0) {
-        if(wpnext_x < ref_x)
-            dir = -1;
-    } else {
-        if(wpnext_y < ref_y)
-            dir = -1;
-    }
+    vector<double> sd = getFrenet(ref_x, ref_y, ref_yaw, maps_s, maps_x, maps_y);
+    cout << "sd[0], car_s " << sd[0] << ", " << car_s << endl;
     
-    vector<vector<double>> results = sortXY(x_in, y_in);
-    //Take only 1/10 points to make a spline
-    for (int i=0; i<x_in.size(); i++) {
-        if(i%10 == 0) {
-            x_val.push_back(results[0][i]);
-            y_val.push_back(results[1][i]);
-        }
+    //Add 30m spaced points ahead of the car (shouldn't this be ref_s?)
+    vector<double> next_xy0 = getXY(sd[0]+30, new_d, maps_s, maps_x, maps_y);
+    vector<double> next_xy1 = getXY(sd[0]+60, new_d, maps_s, maps_x, maps_y);
+    vector<double> next_xy2 = getXY(sd[0]+90, new_d, maps_s, maps_x, maps_y);
+    
+    x_vals.push_back(next_xy0[0]);
+    x_vals.push_back(next_xy1[0]);
+    x_vals.push_back(next_xy2[0]);
+    
+    y_vals.push_back(next_xy0[1]);
+    y_vals.push_back(next_xy1[1]);
+    y_vals.push_back(next_xy2[1]);
+    
+    //Transform coordinates to local car coordinates
+    for(int i=0; i<x_vals.size(); i++) {
+        //shift car ref angle to zero degree
+        double shift_x = x_vals[i] - ref_x;
+        double shift_y = y_vals[i] - ref_y;
+        
+        //rotate the point
+        x_vals[i] = (shift_x*cos(0-ref_yaw) - shift_y*sin(0-ref_yaw));
+        y_vals[i] = (shift_x*sin(0-ref_yaw) + shift_y*cos(0-ref_yaw));
     }
     
     tk::spline s;
-    s.set_points(x_val,y_val,true); //true is for cubic spline
+    s.set_points(x_vals,y_vals,true); //true is for cubic spline
     
-    int points = 30;
-    vector<double> xs_val, ys_val;
-    //Take first point as is.
-    double x0 = x_in[0];
-    double y0 = s(x_in[0]);
-    xs_val.push_back(x0);
-    ys_val.push_back(y0);
-    cout << " car x, y " << ref_x << ", " << ref_y << " x0,y0 " << x0 << "," << y0 << ", car_s " << car_s << endl;
-
-    //double s0 = car_s;
-    double x1;
-    for (int i=0; i<points; i++) {
-
-        if(flip == 0)
-            x0 = x0 + dir*max_dist_inc * cos(ref_yaw);
-        else
-            x0 = x0 + dir*max_dist_inc * sin(ref_yaw); //As we flipped x & y
-        y0 = s(x0);
-
-        //validate the point by converting back to s,d
-        vector<double> sd = getFrenet(x0, y0, ref_yaw, maps_s, maps_x, maps_y);
-        if(i <3) //debug
-            cout << " car x, y, " << ref_x << ", " << ref_y << " x0,y0, " << x0 << "," << y0 << ", car_s, sd[0], " <<
-            car_s << "," << sd[0] << ", sd[1], " << sd[1] << endl;
-
-        xs_val.push_back(x0);
-        ys_val.push_back(y0);
+    //predict car waypoints
+    vector<double> next_x_vals;
+    vector<double> next_y_vals;
+    
+    //Add max 20 previous_path points
+    //int start = max(prev_size-20.0, 0.0);
+    for (int i=0; i<prev_size; i++) {
+        next_x_vals.push_back(previous_path_x[i]);
+        next_y_vals.push_back(previous_path_y[i]);
     }
-    cout << "max_dist_inc = " << max_dist_inc << " , max_speed " << max_speed << " points " << xs_val.size() << endl;
-    if(flip) {
-        return {ys_val, xs_val};
+    
+    //get points from spline
+    //let us assume that 30m on spline is almost straight.
+    double target_x = 30;
+    double target_y = s(target_x);
+    double target_s = sqrt(target_x*target_x + target_y*target_y);
+    double N = target_s/(.02*final_speed); //Number of waypoints in this distance.
+    
+    //we start taking points from begin of spline which started at car_s (but if we have prev points that should fail)
+    //cout << "N = " << N  << endl;
+    double current_x = 0;
+    for(int i=1; i<=total_points-prev_size; i++) {
+        double incr_x = 0.02*final_speed;
+        double local_x = current_x + incr_x;
+        double local_y = s(local_x);
+        
+        //increment values for next loop
+        current_x += incr_x;
+
+        //rotate the point back
+        double x_point = (local_x*cos(ref_yaw) - local_y*sin(ref_yaw));
+        double y_point = (local_x*sin(ref_yaw) + local_y*cos(ref_yaw));
+        
+        //shift point back
+        x_point += ref_x;
+        y_point += ref_y;
+        
+        next_x_vals.push_back(x_point);
+        next_y_vals.push_back(y_point);
     }
-    return {xs_val, ys_val};
+    
+    return {next_x_vals, next_y_vals};
 }
 
 //Use sensor_fusion data to find if it is safe to change lane.
@@ -507,7 +450,7 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
     int rear_gap = 30;
     int prefer_lane = 1;
     
-    if((final_speed < MAX_SPEED && closet_car_ahead[car_lane] < front_gap) || car_lane != prefer_lane) {
+    if((final_speed <= MAX_SPEED && closet_car_ahead[car_lane] < front_gap) || car_lane != prefer_lane) {
         cout << "slow speed and car in front " << closet_car_ahead[car_lane] << " > front_gap , ";
         if(car_lane > 0) { //we can try left lane first
             cout << " left, " ;
@@ -576,6 +519,7 @@ double change_lane(vector<vector <double>> sensor_fusion, double car_s, double c
 double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, double car_d, double car_speed) {
   
     double final_speed = car_speed;
+    bool slowdown = false;
     double closest_car_dist = 7000;
     double closest_car_speed = MAX_SPEED;
 
@@ -620,8 +564,9 @@ double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, dou
           //speed needed to cover the gap in 5 seconds
           double speed = (sf_car_dist - SAFE_GAP)/5 + sf_speed;
           if(final_speed > speed) {
+            slowdown = true;
             final_speed = speed;
-            cout << ", " << final_speed;
+            cout << ", safegap speed " << final_speed;
           }
         }
     }
@@ -629,35 +574,21 @@ double max_speed_inlane(vector<vector <double>> sensor_fusion, double car_s, dou
     //are we going faster than closest car?
     if(final_speed > closest_car_speed && closest_car_dist < SAFE_GAP) { //30 meters gap seems good
         final_speed = closest_car_speed ; //maintain speed of the car ahead.
+        slowdown = true;
         cout << ", slowing down for closest car " << final_speed ;
     }
-    
-    if(final_speed >= 0.9*MAX_SPEED) {
-        //slow down is we are speeding
-        final_speed = car_speed - MAX_DEC;
-        cout << ", slowing down for > 0.9 MAX " << final_speed ;
-    } else if(final_speed == car_speed) {
-        //normal mode
-        final_speed = car_speed + MAX_ACC;
-        cout << ", normal accl " << final_speed ;
-    }
-    
-    //Keep acc in check
-    if((final_speed - car_speed) > MAX_ACC*1.01) {
-        final_speed = car_speed + MAX_ACC; //acceleration in check
-        cout << ", max acc in check " << final_speed ;
-    }
-    //deceleration in check
-    //if we are 90% of max speed decelerate regular else slower
-    if ((car_speed - final_speed) > MAX_DEC*1.01) {
-        if(final_speed >= 0.9*MAX_SPEED) {
+    if(slowdown) {
+        //see if we have slowed down more than permitted DEC
+        if(final_speed-car_speed > MAX_DEC) {
             final_speed = car_speed - MAX_DEC;
-            cout << ", max deceleration " << final_speed << " as " << (car_speed - final_speed);
-        } else {
-            final_speed = car_speed - NORM_DEC;
-            cout << ", normal deceleration " << final_speed << " as " << (car_speed - final_speed);
+        }
+    } else {
+        //accelerate if we are not at the max
+        if(car_speed + MAX_ACC < MAX_SPEED) {
+            final_speed = car_speed + MAX_ACC;
         }
     }
+    
     cout << " final = " << final_speed << endl;
     return final_speed;
 }
@@ -732,7 +663,7 @@ int main() {
             
             if(abs(car_speed-old_speed) > 10) {
                 cout << "sudden speed change from " << old_speed << " to " << car_speed << endl;
-                car_speed = old_speed;
+                //car_speed = old_speed;
             }
 
           	// Previous path data given to the Planner
@@ -750,7 +681,7 @@ int main() {
             
             //We seem to be getting yaw very large, make it less than pi
             double ref_yaw = deg2rad(car_yaw);
-            
+          
             while (ref_yaw >= 2*pi()) {
                 cout << "reducing ref_yaw by 2pi " << ref_yaw << endl;
                 ref_yaw -= 2*pi();
@@ -760,9 +691,9 @@ int main() {
                 car_s -= MAX_S;
              */
             //Use sensor_fusion data to find out what is the max speed we can move in this lane.
-            double max_speed = max_speed_inlane(sensor_fusion, car_s, car_d, car_speed);
+            double max_speed = max_speed_inlane(sensor_fusion, car_s, car_d, old_speed);
             
-            cout << "car_s, car_d, ref_yaw, car_speed, speed-diff, " << car_s << ", " << car_d << ", " << ref_yaw << ", " << car_speed << ", " << max_speed-car_speed << endl;
+            //cout << "car_s, car_d, ref_yaw, car_speed, speed-diff, " << car_s << ", " << car_d << ", " << ref_yaw << ", " << car_speed << ", " << max_speed-car_speed << endl;
             //assert(car_s  >=old_car_s -0.75);
             
             //Allow lane change only when moving above 8 m/s
@@ -772,23 +703,23 @@ int main() {
                 new_d = change_lane(sensor_fusion, car_s, car_d, car_speed, max_speed);
                 prev_change_s = car_s;
             }
-            //don't change speed if changing lane to reduce accl limit
+            /*don't change speed if changing lane to reduce accl limit
             if(int(new_d/4) != int(car_d/4)) {
                 max_speed = car_speed;
                 cout << "no change in speed for lane change max_speed = " << max_speed << endl;
-            }
+            }*/
             
-            vector<vector<double>> results = projectPath(car_s, car_d, new_d, ref_yaw, car_speed, max_speed, previous_path_x,
+            vector<vector<double>> results = projectPath(car_x, car_y, car_s, car_d, new_d, ref_yaw, car_speed, max_speed, previous_path_x,
                                                         previous_path_y, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
-            results = smoothCoordinates(results[0], results[1], car_x, car_y, ref_yaw, max_speed,
-                                                        car_s, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            /* results = smoothCoordinates(results[0], results[1], car_x, car_y, ref_yaw, max_speed,
+                                                        car_s, map_waypoints_s, map_waypoints_x, map_waypoints_y);*/
             msgJson["next_x"] = results[0];
             msgJson["next_y"] = results[1];
             
             old_yaw = ref_yaw;
             old_car_s = car_s;
-            old_speed = car_speed;
+            old_speed = max_speed;
             
           	auto msg = "42[\"control\","+ msgJson.dump()+"]";
 
@@ -837,83 +768,3 @@ int main() {
   }
   h.run();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
